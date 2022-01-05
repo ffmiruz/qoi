@@ -6,7 +6,8 @@ import (
 	"image"
 	"image/draw"
 	"io"
-	"unsafe"
+
+	"fmt"
 )
 
 type Header struct {
@@ -145,17 +146,37 @@ func Diff(c, prev Color) ColorDiff {
 }
 
 func Decode(r io.Reader) (image.Image, error) {
-	buf := make([]byte, 14, 14)
-	_, err := r.Read(buf)
+	hdr, err := decodeHeader(r)
 	if err != nil {
 		return nil, err
 	}
-	hdr := decodeHeader(buf)
+	fmt.Println(hdr)
 	img := image.NewNRGBA(image.Rect(0, 0, int(hdr.Width), int(hdr.Height)))
+	return img, err
 }
 
-// TODO: proper decode
-func decodeHeader(buf []byte) Header {
-	temp := make([]byte, 4, 4)
-	return *(*Header)(unsafe.Pointer(&buf[0]))
+func decodeHeader(r io.Reader) (Header, error) {
+	hdr := Header{}
+	_, err := r.Read(hdr.Magic[:])
+	if err != nil {
+		return hdr, err
+	}
+	err = binary.Read(r, binary.BigEndian, &hdr.Width)
+	if err != nil {
+		return hdr, err
+	}
+	err = binary.Read(r, binary.BigEndian, &hdr.Height)
+	if err != nil {
+		return hdr, err
+	}
+	buf := bufio.NewReader(r)
+	hdr.Channels, err = buf.ReadByte()
+	if err != nil {
+		return hdr, err
+	}
+	hdr.Colorspace, err = buf.ReadByte()
+	if err != nil {
+		return hdr, err
+	}
+	return hdr, nil
 }
