@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/draw"
 	"io"
+	"unsafe"
 )
 
 type Header struct {
@@ -141,4 +142,20 @@ func Diff(c, prev Color) ColorDiff {
 		G: int8(c.G) - int8(prev.G),
 		B: int8(c.B) - int8(prev.B),
 	}
+}
+
+func Decode(r io.Reader) (image.Image, error) {
+	buf := make([]byte, 14, 14)
+	_, err := r.Read(buf)
+	if err != nil {
+		return nil, err
+	}
+	hdr := decodeHeader(buf)
+	img := image.NewNRGBA(image.Rect(0, 0, int(hdr.Width), int(hdr.Height)))
+}
+
+// TODO: proper decode
+func decodeHeader(buf []byte) Header {
+	temp := make([]byte, 4, 4)
+	return *(*Header)(unsafe.Pointer(&buf[0]))
 }
