@@ -2,12 +2,11 @@ package qoi
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"image"
 	"image/draw"
 	"io"
-
-	"fmt"
 )
 
 type Header struct {
@@ -150,8 +149,46 @@ func Decode(r io.Reader) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(hdr)
 	img := image.NewNRGBA(image.Rect(0, 0, int(hdr.Width), int(hdr.Height)))
+	buf := bufio.NewReader(r)
+	pixels := bytes.NewBuffer(img.Pix)
+
+	for {
+		var a byte
+
+		byte, err := buf.ReadByte()
+		if err != nil {
+			return img, err
+		}
+		switch byte {
+		// Complete RGBA pixel
+		case TAG_OP_RGBA:
+			_, err = io.CopyN(pixels, buf, 3)
+			if err != nil {
+				return img, err
+			}
+			a, err = buf.ReadByte()
+			if err != nil {
+				return img, err
+			}
+			err = pixels.WriteByte(a)
+			if err != nil {
+				return img, err
+			}
+		// Alpha is similar to previous pixel
+		case TAG_OP_RGB:
+			_, err = io.CopyN(pixels, buf, 3)
+			err = pixels.WriteByte(a)
+			if err != nil {
+				return img, err
+			}
+		case byte > TAG_OP_RUN:
+			run := TAG_OP_RUN ^ byte
+
+		}
+
+	}
+
 	return img, err
 }
 
