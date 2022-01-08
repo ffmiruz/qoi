@@ -144,25 +144,26 @@ func Diff(c, prev Color) ColorDiff {
 	}
 }
 
+// TODO: handle invalid qoi
 func Decode(r io.Reader) (image.Image, error) {
 	hdr, err := decodeHeader(r)
 	if err != nil {
 		return nil, err
 	}
 	img := image.NewNRGBA(image.Rect(0, 0, int(hdr.Width), int(hdr.Height)))
-	buf := bufio.NewReader(r)
+	rd := bufio.NewReader(r)
 	pixels := bytes.NewBuffer(img.Pix)
 
 	pix := make([]byte, int(hdr.Channels))
 	for {
-		byte, err := buf.ReadByte()
+		byte, err := rd.ReadByte()
 		if err != nil {
 			return img, err
 		}
 		switch byte {
 		// Complete RGBA pixel
 		case TAG_OP_RGBA:
-			_, err = buf.Read(pix)
+			_, err = rd.Read(pix)
 			if err != nil {
 				return img, err
 			}
@@ -172,7 +173,7 @@ func Decode(r io.Reader) (image.Image, error) {
 			}
 		// Alpha is similar to previous pixel
 		case TAG_OP_RGB:
-			_, err = buf.Read(pix[:3])
+			_, err = rd.Read(pix[:3])
 			if err != nil {
 				return img, err
 			}
@@ -189,8 +190,21 @@ func Decode(r io.Reader) (image.Image, error) {
 					return img, err
 				}
 			}
+		// Difference from previous pixel. Ignore illegal cases.
 		case byte > TAG_OP_LUMA:
-
+			bias_dg := TAG_OP_LUMA ^ byte
+			// g
+			pix[1] = pix[1] + bias_dg - 32
+			byte1, err := rd.ReadByte()
+			if err != nil {
+				return img, err
+			}
+			bias_dr_dg := byte1 >> 4
+			bias_db_dg := byte1 & 0b00001111
+			// r
+			pix[0] = pix[0] + bias_dr_dg + bias_dg - 8 - 32
+			// b
+			pix[2] = pix[2] + bias_db_dg + bias_dg - 8 - 32
 		}
 
 	}
