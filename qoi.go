@@ -153,9 +153,8 @@ func Decode(r io.Reader) (image.Image, error) {
 	buf := bufio.NewReader(r)
 	pixels := bytes.NewBuffer(img.Pix)
 
+	pix := make([]byte, int(hdr.Channels))
 	for {
-		var a byte
-
 		byte, err := buf.ReadByte()
 		if err != nil {
 			return img, err
@@ -163,27 +162,34 @@ func Decode(r io.Reader) (image.Image, error) {
 		switch byte {
 		// Complete RGBA pixel
 		case TAG_OP_RGBA:
-			_, err = io.CopyN(pixels, buf, 3)
+			_, err = buf.Read(pix)
 			if err != nil {
 				return img, err
 			}
-			a, err = buf.ReadByte()
-			if err != nil {
-				return img, err
-			}
-			err = pixels.WriteByte(a)
+			_, err = pixels.Write(pix)
 			if err != nil {
 				return img, err
 			}
 		// Alpha is similar to previous pixel
 		case TAG_OP_RGB:
-			_, err = io.CopyN(pixels, buf, 3)
-			err = pixels.WriteByte(a)
+			_, err = buf.Read(pix[:3])
 			if err != nil {
 				return img, err
 			}
+			_, err = pixels.Write(pix)
+			if err != nil {
+				return img, err
+			}
+		// n run of previous pixel.
 		case byte > TAG_OP_RUN:
-			run := TAG_OP_RUN ^ byte
+			n := int(TAG_OP_RUN^byte) + 1
+			for i := 0; i < n; i++ {
+				_, err = pixels.Write(pix)
+				if err != nil {
+					return img, err
+				}
+			}
+		case byte > TAG_OP_LUMA:
 
 		}
 
