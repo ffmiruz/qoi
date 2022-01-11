@@ -154,15 +154,17 @@ func Decode(r io.Reader) (image.Image, error) {
 	rd := bufio.NewReader(r)
 	pixels := bytes.NewBuffer(img.Pix)
 
-	pix := make([]byte, int(hdr.Channels))
-	for {
+	cache := [64][4]byte{}
+	pix := make([]byte, 4)
+	pix[3] = 255
+	for pos := 0; pos < len(img.Pix); pos += 4 {
 		byte, err := rd.ReadByte()
 		if err != nil {
 			return img, err
 		}
-		switch byte {
+		switch {
 		// Complete RGBA pixel
-		case TAG_OP_RGBA:
+		case byte == TAG_OP_RGBA:
 			_, err = rd.Read(pix)
 			if err != nil {
 				return img, err
@@ -172,7 +174,7 @@ func Decode(r io.Reader) (image.Image, error) {
 				return img, err
 			}
 		// Alpha is similar to previous pixel
-		case TAG_OP_RGB:
+		case byte == TAG_OP_RGB:
 			_, err = rd.Read(pix[:3])
 			if err != nil {
 				return img, err
@@ -182,7 +184,7 @@ func Decode(r io.Reader) (image.Image, error) {
 				return img, err
 			}
 		// n run of previous pixel.
-		case byte > TAG_OP_RUN:
+		case byte >= TAG_OP_RUN:
 			n := int(TAG_OP_RUN^byte) + 1
 			for i := 0; i < n; i++ {
 				_, err = pixels.Write(pix)
@@ -190,8 +192,8 @@ func Decode(r io.Reader) (image.Image, error) {
 					return img, err
 				}
 			}
-		// Difference from previous pixel. Ignore illegal cases.
-		case byte > TAG_OP_LUMA:
+		// LUMA difference from previous pixel. Ignore illegal cases.
+		case byte >= TAG_OP_LUMA:
 			bias_dg := TAG_OP_LUMA ^ byte
 			// g
 			pix[1] = pix[1] + bias_dg - 32
@@ -205,10 +207,28 @@ func Decode(r io.Reader) (image.Image, error) {
 			pix[0] = pix[0] + bias_dr_dg + bias_dg - 8 - 32
 			// b
 			pix[2] = pix[2] + bias_db_dg + bias_dg - 8 - 32
+			_, err = pixels.Write(pix)
+			if err != nil {
+				return img, err
+			}
+		case byte >= TAG_OP_DIFF:
+			pix[0] = pix[0] + byte&0b00110000 - 2
+			pix[1] = pix[1] + byte&0b00001100 - 2
+			pix[2] = pix[2] + byte&0b00000011 - 2
+			_, err = pixels.Write(pix)
+			if err != nil {
+				return img, err
+			}
+		default:
+			copy(pix, cache[byte][:])
+			_, err = pixels.Write(pix)
+			if err != nil {
+				return img, err
+			}
 		}
-
+		i := IndexHash(Color{pix[0], pix[1], pix[2], pix[3]})
+		copy(cache[i][:], pix)
 	}
-
 	return img, err
 }
 

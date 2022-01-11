@@ -3,6 +3,7 @@ package qoi
 import (
 	"bytes"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,5 +43,33 @@ func TestEncode(t *testing.T) {
 }
 
 func TestDecode(t *testing.T) {
-
+	file, err := os.Open("qoi_test_images/testcard_rgba.qoi")
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	img, err := Decode(file)
+	if err != nil {
+		t.Error(err)
+	}
+	b := new(bytes.Buffer)
+	err = png.Encode(b, img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fpng, err := os.Open("qoi_test_images/testcard_rgba.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fpng.Close()
+	std, err := io.ReadAll(fpng)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Bytes()) != len(std) {
+		t.Errorf("expect len of %v instead of %v", len(std), len(b.Bytes()))
+	}
+	if !bytes.Equal(b.Bytes(), std) {
+		t.Errorf("wrongly decoded")
+	}
 }
